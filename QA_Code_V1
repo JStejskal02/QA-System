@@ -1,0 +1,164 @@
+!pip install wikipedia
+
+import wikipedia
+import sys
+import os
+import lxml
+import re
+import nltk
+from nltk.chunk import tree2conlltags
+from datetime import datetime
+from nltk import ne_chunk, pos_tag, word_tokenize
+
+nltk.download('punkt')
+nltk.download('average_perceptron_tagger')
+nltk.download('maxent_ne_chunker')
+nltk.download('words')
+
+def tokenizer(sent):
+    words = nltk.word_tokenize(sent)
+    pos_tags = nltk.pos_tag(words)
+    tree = nltk.ne_chunk(pos_tags)
+    conll_tags = nltk.tree2conlltags(tree)
+    return conll_tags
+
+def get_questions(s):
+    rules = [[r'Where (Is|Was) (.+)', ["{0}"]],
+             [r'Who (Is|Was) (.+)', ["{0}"]],
+             [r'What (Is|Was) (.+) Age', ["{0}"]],
+             [r'What (Is|Was) (.+)', ["{0}"]],
+             [r'When (Is|Was) (.+) Born', ["{0}"]],
+             [r'When (Is|Was) (.+) Birthday', ["{0}"]],
+             [r'When (Is|Was) (.+)', ["{0}"]],
+            ]
+    
+    for r, c in rules:
+        m = re.match(r, s.rstrip('.!?'))
+        if m:
+            return m.groups()[1]
+    return ""
+
+def get_ans_wiki(query):
+    try:
+        return wikipedia.summary(query, sentences = 1)
+    except wikipedia.exceptions.DisambiguationError as e:
+        return wikipedia.summary(e.options[0], sentences = 1)
+    except wikipedia.exceptions.PageError:
+        return ""
+    except Exception:
+        return ""
+
+def check_digits(text):
+    return re.findall(r'\d+', text)
+
+def transform(u, q):
+    u = u.rstrip('.!?')
+    ur = re.sub(r'When (Is|Was) (.+) Born', r'\2 Was Born On ', u)
+    if ur != u:
+        return ur + q.strftime("%B %d, %Y") + '.'
+        #return ur + str(q) + '.'
+    
+    ur = re.sub(r'When (Is|Was) (.+) Birthday', r'\2 Birthday Is On ', u)
+    if ur != u:
+        ur = ur + q.strftime("%B %d, %Y")
+        #ur = ur + q   
+        ur = re.sub(r'\d{4}', '', ur)
+        return ur + '.'
+    
+    ur = re.sub(r'What (Is|Was) (.+) Age', r'\2 Age Is ', u)
+    if ur != u:
+        return ur + str(q) + '.'
+    
+    # The two commented out lines above where what I had originally but when asking for someones birthdate would output the year only.
+
+def main():
+    try:
+        log = open('mylogfile.txt', "w+")
+        print("*** This is a QA system by . It will try to answer questions that start with Where, Who, What or When")
+        counter = 1
+        while True:
+            s = input()
+            e = s
+            
+            if s == "exit":
+                print("\nThank you! Goodbye.")
+                break
+                
+            log.write(str(counter) + "Ques) " + s + "\n")
+            flag = False
+            final = ""
+            wiki = ""
+            
+            if s != "" and s is not None:
+                
+                s = s.title()
+                n = tokenizer(s)
+                r = get_questions(s)
+                
+                if r != "":
+                    if ("Where" in s or "What" in s):
+                        
+                        wiki = get_ans_wiki(r)
+                        match = re.search(r'\d{4}', wiki)
+                        
+                        if match is not None:
+                            wiki = ""
+                            
+                    if ('I-PERSON' or 'B-PERSON') in n[2]:
+                        flag = True
+                        
+                    if "Who" in s and flag:
+                        wiki = get_ans_wiki(r)
+                        
+                    if ("When" in s) and flag:
+                        
+                        wiki = get_ans_wiki(r)
+                        result = check_digits(wiki)
+                        
+                        if result:
+                            for dd in result:
+                                if len(dd) == 4:
+                                    birthdate = datetime.strptime(dd, "%Y")
+                                    appends = transform(s, birthdate)
+                                    if appends is not None:
+                                        final = appends
+                                        break
+                        #if result != "":
+                         #   for dd in result:
+                          #      if(len(dd) == 4):
+                           #         match = dd        This is what I had originally but changed it to the above 'if result:' to try and fix the birthdate problem
+                            #        break
+                            
+                            #appends = transform(s, match)
+                            #if appends is not None:
+                             #   final = appends
+                                
+                        else:
+                            final = "" 
+                    else:
+                        final = get_ans_wiki(r)
+                else:
+                    final = ""
+            else:
+                print("Please ask a valid question!")
+            
+            if final == "":
+                log.write(str(counter) + "A) Answer not found.\n\n")
+                print("I am sorry, I don't know the answer.\n")
+                
+            else:
+                try:
+                    log.write(str(counter) + "A) " + final + "\n\n")
+                    print(final + "\n")
+                except Exception as GeneralException:
+                    log.write(str(counter) + "A) Answer not found.\n\n")
+                    print("I am sorry, I don't know the answer.\n")
+                    
+            counter = counter + 1
+            print("Please ask another question of type 'exit' to exit from the program:\n")
+    except Exception as GeneralException:
+        print(GeneralException)
+    finally:
+        log.close()
+        
+main()
