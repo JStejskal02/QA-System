@@ -73,7 +73,7 @@ def transform(u, q):
 
 def main():
     try:
-        log = open('mylogfile.txt', "w+")
+        log = open('mylogfile.txt', "w+", encoding = "utf-8")
         print("*** This is a QA system by . It will try to answer questions that start with Where, Who, What or When")
         counter = 1
         while True:
